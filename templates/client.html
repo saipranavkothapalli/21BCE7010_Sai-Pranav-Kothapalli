@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>5x5 Chess Board</title>
+    <style>
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #f0f2f5;
+        overflow: hidden;
+      }
+      h1 {
+        font-size: 2.5rem;
+        color: #333;
+        margin-bottom: 0.5rem;
+      }
+      h2 {
+        font-size: 1.5rem;
+        color: #666;
+        margin-bottom: 1rem;
+      }
+      #container {
+        display: flex;
+        width: 100%;
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      #move-history {
+        width: 350px;
+        margin-right: 20px;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        background-color: #fff;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        overflow-y: auto;
+        height: 600px;
+        box-sizing: border-box;
+      }
+      #move-history h3 {
+        font-size: 1.2rem;
+        color: #444;
+        margin-top: 0;
+      }
+      #board-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+        flex-grow: 1;
+      }
+      #board {
+        display: grid;
+        grid-template-columns: repeat(5, 80px);
+        grid-template-rows: repeat(5, 80px);
+        gap: 5px;
+        background-color: #eee;
+        padding: 10px;
+        border-radius: 10px;
+      }
+      .cell {
+        width: 80px;
+        height: 80px;
+        background-color: #f9f9f9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #333;
+        cursor: pointer;
+        border: 2px solid #ddd;
+        border-radius: 5px;
+        transition: background-color 0.3s, border-color 0.3s;
+      }
+      .cell:nth-child(odd) {
+        background-color: #e9e9e9;
+      }
+      .cell:nth-child(even) {
+        background-color: #ffffff;
+      }
+      .cell:hover {
+        border-color: #000;
+        background-color: #d9d9d9;
+      }
+      #move-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 10px;
+        box-sizing: border-box;
+        background-color: #fff;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+      select {
+        padding: 10px;
+        font-size: 1rem;
+        margin-right: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        background-color: #fff;
+        box-sizing: border-box;
+        margin-bottom: 10px;
+      }
+      button {
+        padding: 10px 20px;
+        font-size: 1rem;
+        cursor: pointer;
+        background-color: #007bff;
+        color: #fff;
+        border: none;
+        border-radius: 5px;
+        transition: background-color 0.3s, transform 0.2s;
+      }
+      button:hover {
+        background-color: #0056b3;
+        transform: translateY(-2px);
+      }
+      button:active {
+        transform: translateY(1px);
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      <h1>5x5 Chess Board</h1>
+      <h2 id="turn-indicator">Player1's turn</h2>
+      <div id="container">
+        <div id="move-history">
+          <h3>Move History</h3>
+          <ul id="history-list"></ul>
+        </div>
+        <div id="board-container">
+          <div id="board"></div>
+          <div id="move-container">
+            <select id="move-direction">
+              <option value="L">Left (L)</option>
+              <option value="R">Right (R)</option>
+              <option value="F">Forward (F)</option>
+              <option value="B">Backward (B)</option>
+              <option value="FL">Forward-Left (FL)</option>
+              <option value="FR">Forward-Right (FR)</option>
+              <option value="BL">Backward-Left (BL)</option>
+              <option value="BR">Backward-Right (BR)</option>
+            </select>
+            <button id="confirm-move">Confirm Move</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
+    <script>
+      const socket = io();
+      const boardElement = document.getElementById("board");
+      const turnIndicator = document.getElementById("turn-indicator");
+      const moveContainer = document.getElementById("move-container");
+      const moveDirectionSelect = document.getElementById("move-direction");
+      const historyList = document.getElementById("history-list");
+      let selectedPiece = null;
+      let selectedPos = null;
+
+      const initBoard = (gameState) => {
+        boardElement.innerHTML = "";
+        for (let i = 0; i < 25; i++) {
+          const row = Math.floor(i / 5);
+          const col = i % 5;
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          cell.dataset.index = i;
+          cell.textContent = gameState.board[row][col] || "";
+          boardElement.appendChild(cell);
+          cell.addEventListener("click", () => {
+            if (gameState.board[row][col] !== "") {
+              selectedPiece = gameState.board[row][col];
+              selectedPos = { row, col };
+              moveContainer.style.display = "flex";
+            }
+          });
+        }
+      };
+
+      document.getElementById("confirm-move").addEventListener("click", () => {
+        const direction = moveDirectionSelect.value;
+        if (selectedPiece && selectedPos) {
+          socket.emit("move", {
+            room: "game1",
+            move: { piece: selectedPiece, direction, start_pos: selectedPos },
+          });
+          moveContainer.style.display = "none";
+        }
+      });
+
+      socket.on("game_state", (data) => {
+        initBoard(data);
+        turnIndicator.textContent = `${data.turn}'s turn`;
+      });
+
+      socket.on("update_board", (data) => {
+        initBoard(data);
+      });
+
+      socket.on("message", (data) => {
+        turnIndicator.textContent = data.data;
+      });
+
+      socket.on("move_made", (data) => {
+        const moveEntry = document.createElement("li");
+        moveEntry.textContent = `${data.move.piece} moved ${data.move.direction} from ${data.move.start_pos.row},${data.move.start_pos.col}`;
+        historyList.appendChild(moveEntry);
+      });
+
+      socket.emit("join", { room: "game1" });
+    </script>
+  </body>
+</html>
